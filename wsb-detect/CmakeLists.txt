@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.28)
+project(WSB_DETECT)
+
+add_library(wsb_detect STATIC detect.c util.c)
+
+target_include_directories(wsb_detect PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+set_target_properties(wsb_detect PROPERTIES C_STANDARD 17)
